@@ -4,11 +4,11 @@ venv/
 __pycache__/
 *.pyc
 
-# Ignore ALL contents inside the data folder (raw, processed, and results)
+# Ignore ALL contents inside the data folder 
 data/
 
 # Ignore all trained model files
 models/*.joblib
 
-# Ignore generated analysis figures (Optional, but recommended)
+# Ignore generated analysis figures 
 docs/figures/
