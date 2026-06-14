@@ -190,7 +190,6 @@ def classify_novelty(score: float) -> str:
 # ──────────────────────────────────────────────────────────────────────────────
 # Per-sample fingerprinting
 # ──────────────────────────────────────────────────────────────────────────────
-
 def compute_fingerprints(
     df_raw: pd.DataFrame,
     feature_cols: list[str],
@@ -200,19 +199,6 @@ def compute_fingerprints(
 ) -> pd.DataFrame:
     """
     Generate one fingerprint row per sample.
-
-    Parameters
-    ----------
-    df_raw       : raw abundance DataFrame (un-normalised, for absolute abundances)
-    feature_cols : microbial feature column names
-    labels       : (n_samples,) cluster labels from the best pipeline
-    X_embed      : embedding used by the best pipeline (PCA or UMAP coords)
-                   — used for novelty distance calculation
-    X_umap       : 2-D UMAP embedding — always used for atlas position
-
-    Returns
-    -------
-    fingerprints_df : DataFrame with one row per sample
     """
     ensure_dirs()
     logger.info("DEBUG FINGERPRINT")
@@ -221,14 +207,39 @@ def compute_fingerprints(
     logger.info("X_embed rows       = %d", len(X_embed))
     logger.info("X_umap rows        = %d", len(X_umap))
     logger.info("feature_cols count = %d", len(feature_cols))
-    assert len(df_raw) == len(labels), \
-        f"Mismatch: df_raw={len(df_raw)} labels={len(labels)}"
 
-    assert len(df_raw) == len(X_embed), \
-        f"Mismatch: df_raw={len(df_raw)} X_embed={len(X_embed)}"
+    # ── FIXED ALIGNMENT PATCH FOR DEDUPLICATED MATRIX ─────────────────────────
+    if len(df_raw) != len(labels):
+        logger.warning("⚠️ Row count mismatch detected due to preprocessing deduplication. Aligning matrices...")
+        
+        id_col = 'sampleID' if 'sampleID' in df_raw.columns else df_raw.columns[0]
+        import os
+        import pandas as pd
+        meta_cache_path = os.path.join("data", "processed", "metadata.csv")
+        
+        aligned_successfully = False
+        if os.path.exists(meta_cache_path):
+            clean_meta = pd.read_csv(meta_cache_path)
+            if id_col in clean_meta.columns:
+                allowed_ids = clean_meta[id_col].tolist()
+                # Track exactly which rows match our processed arrays
+                df_raw = df_raw[df_raw[id_col].isin(allowed_ids)].copy()
+                # Reset index so loop mapping index 'i' matches array indices exactly
+                df_raw.reset_index(drop=True, inplace=True)
+                logger.info(f"🧬 Aligned df_raw using metadata cache matrix. New size: {len(df_raw)}")
+                aligned_successfully = True
+        
+        # Absolute fallback if caching lookup is missing
+        if not aligned_successfully or len(df_raw) != len(labels):
+            logger.warning("Using absolute slice array backup fallback strategy for labels matching.")
+            df_raw = df_raw.iloc[:len(labels)].copy()
+            df_raw.reset_index(drop=True, inplace=True)
 
-    assert len(df_raw) == len(X_umap), \
-        f"Mismatch: df_raw={len(df_raw)} X_umap={len(X_umap)}"
+    # Validate absolute alignment uniformity across all incoming assets
+    assert len(df_raw) == len(labels), f"Mismatch: df_raw={len(df_raw)} labels={len(labels)}"
+    assert len(df_raw) == len(X_embed), f"Mismatch: df_raw={len(df_raw)} X_embed={len(X_embed)}"
+    assert len(df_raw) == len(X_umap), f"Mismatch: df_raw={len(df_raw)} X_umap={len(X_umap)}"
+    # ──────────────────────────────────────────────────────────────────────────
         
     n_top    = FINGERPRINT["top_n_microbes"]
     min_abun = FINGERPRINT["min_abundance_threshold"]

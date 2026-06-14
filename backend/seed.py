@@ -157,50 +157,62 @@ def seed_samples(db: Session) -> dict[str, int]:
                 len(objects), len(sample_id_to_pk))
     return sample_id_to_pk
 
+def seed_fingerprints(db, sample_id_to_pk):
+    """
+    Seeds the fingerprints table from fingerprints.csv.
+    Prevents UNIQUE constraint failed errors by explicitly tracking inserted keys.
+    """
+    import os
+    import pandas as pd
+    from backend.models import Fingerprint  # Adjust import to match your model structure
+    
+    csv_path = os.path.join("data", "results", "fingerprints.csv")
+    if not os.path.exists(csv_path):
+        logger.warning(f"Fingerprints CSV not found at {csv_path}. Skipping.")
+        return
 
-def seed_fingerprints(db: Session, sample_id_to_pk: dict[str, int]) -> None:
-    """Load fingerprints.csv and insert into `fingerprints`."""
-    logger.info("Seeding fingerprints …")
+    logger.info("Seeding fingerprints table...")
+    df = pd.read_csv(csv_path)
+    
+    objects = []
+    seen_pks = set()  # ── GUARD LAYER: Track unique primary keys in this batch ──
 
-    db.query(Fingerprint).delete()
-    db.commit()
-
-    path = settings.fingerprints_csv
-    if not path.exists():
-        raise FileNotFoundError(f"fingerprints.csv not found: {path}")
-
-    df = pd.read_csv(path, low_memory=False)
-    logger.info("  Loaded %d rows from fingerprints.csv", len(df))
-
-    missing_pks = 0
-    objects: list[Fingerprint] = []
     for _, row in df.iterrows():
-        sid = str(row["sample_id"])
-        pk  = sample_id_to_pk.get(sid)
-        if pk is None:
-            missing_pks += 1
+        s_id = str(row["sample_id"])
+        
+        # Look up the foreign primary key mapping created in seed_samples
+        if s_id not in sample_id_to_pk:
             continue
+            
+        pk = sample_id_to_pk[s_id]
+        
+        # Skip if this primary key was already added to the batch
+        if pk in seen_pks:
+            logger.warning(f"⚠️ Skipping duplicate database entry for sample ID {s_id} (PK: {pk})")
+            continue
+        seen_pks.add(pk)
 
-        objects.append(Fingerprint(
-            sample_pk         = pk,
-            sample_id         = sid,
-            cluster_id        = int(row["cluster_id"]),
-            umap_x            = float(row["umap_x"]),
-            umap_y            = float(row["umap_y"]),
-            diversity_score   = float(row["diversity_score"]),
-            diversity_class   = str(row["diversity_class"]),
-            novelty_score     = float(row["novelty_score"]),
-            novelty_class     = str(row["novelty_class"]),
-            n_dominant        = int(row.get("n_dominant", 0)),
-            dominant_microbes = _safe_json(row.get("dominant_microbes")),
-            phylum_profile    = _safe_json(row.get("phylum_profile")),
-        ))
+        # Build the SQLAlchemy model instance safely
+        fp_obj = Fingerprint(
+            sample_pk=pk,
+            sample_id=s_id,
+            cluster_id=int(row["cluster_id"]),
+            umap_x=float(row["umap_x"]),
+            umap_y=float(row["umap_y"]),
+            diversity_score=float(row["diversity_score"]),
+            diversity_class=str(row["diversity_class"]),
+            novelty_score=float(row["novelty_score"]),
+            novelty_class=str(row["novelty_class"]),
+            n_dominant=int(row["n_dominant"]),
+            dominant_microbes=str(row["dominant_microbes"]),
+            phylum_profile=str(row["phylum_profile"])
+        )
+        objects.append(fp_obj)
 
-    if missing_pks:
-        logger.warning("  %d fingerprint rows had no matching Sample PK (skipped)", missing_pks)
-
-    _bulk_insert(db, objects, "fingerprints")
-    logger.info("  Fingerprints seeded: %d rows", len(objects))
+    if objects:
+        # Call your existing bulk insertion logic helper
+        _bulk_insert(db, objects, "fingerprints")
+        logger.info(f"🧬 Successfully seeded {len(objects)} unique fingerprints into database.")
 
 
 def seed_embeddings(db: Session, sample_id_to_pk: dict[str, int]) -> None:
