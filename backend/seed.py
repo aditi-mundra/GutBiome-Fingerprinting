@@ -59,13 +59,18 @@ def _nan_to_none(value: object) -> object:
     return value
 
 
-def _safe_json(value: object) -> str | None:
+def _safe_json(value: object) -> dict | list | None:
     """
     Ensure complex dicts/lists/strings are converted into perfectly formatted
-    clean JSON text strings for SQLite storage, handling double-serialized data.
+    Python objects (dicts/lists) for SQLAlchemy JSON columns, handling 
+    double-serialized or escaped data cleanly.
     """
     if value is None or (isinstance(value, float) and pd.isna(value)):
         return None
+    
+    # If it's already a native dict or list, pass it through directly
+    if isinstance(value, (dict, list)):
+        return value
     
     # If it's a string, it might be double-serialized or contain escaped characters
     if isinstance(value, str):
@@ -79,7 +84,7 @@ def _safe_json(value: object) -> str | None:
                 parsed = json.loads(value_stripped)
                 if isinstance(parsed, str):
                     parsed = json.loads(parsed)
-                return json.dumps(parsed)
+                return parsed  # Return the clean dictionary or list object
             except (json.JSONDecodeError, ValueError):
                 pass
                 
@@ -91,17 +96,13 @@ def _safe_json(value: object) -> str | None:
                 if cleaned.startswith('"') and cleaned.endswith('"'):
                     cleaned = cleaned[1:-1]
                 parsed = json.loads(cleaned)
-                return json.dumps(parsed)
+                return parsed  # Return the clean dictionary or list object
             except (json.JSONDecodeError, ValueError):
                 pass
-                
-        return json.dumps(value)
-            
-    # Convert native Python lists/dicts/numpy types to clean text strings
-    try:
-        return json.dumps(value)
-    except (TypeError, ValueError):
         return None
+            
+    # Fallback case: if it's some other structural type, return it if it's a valid collection
+    return value if isinstance(value, (dict, list)) else None
 
 
 def _bulk_insert(db: Session, objects: list, label: str) -> None:

@@ -215,6 +215,21 @@ def compute_fingerprints(
     fingerprints_df : DataFrame with one row per sample
     """
     ensure_dirs()
+    logger.info("DEBUG FINGERPRINT")
+    logger.info("df_raw rows        = %d", len(df_raw))
+    logger.info("labels length      = %d", len(labels))
+    logger.info("X_embed rows       = %d", len(X_embed))
+    logger.info("X_umap rows        = %d", len(X_umap))
+    logger.info("feature_cols count = %d", len(feature_cols))
+    assert len(df_raw) == len(labels), \
+        f"Mismatch: df_raw={len(df_raw)} labels={len(labels)}"
+
+    assert len(df_raw) == len(X_embed), \
+        f"Mismatch: df_raw={len(df_raw)} X_embed={len(X_embed)}"
+
+    assert len(df_raw) == len(X_umap), \
+        f"Mismatch: df_raw={len(df_raw)} X_umap={len(X_umap)}"
+        
     n_top    = FINGERPRINT["top_n_microbes"]
     min_abun = FINGERPRINT["min_abundance_threshold"]
 
@@ -225,7 +240,7 @@ def compute_fingerprints(
     novelty_scores = compute_novelty_scores(X_embed, labels)
 
     records: list[dict[str, Any]] = []
-
+    
     for i, sample_id in enumerate(df_raw["sampleID"].values):
         abun_vec = abun_matrix[i]
 

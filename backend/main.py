@@ -341,7 +341,7 @@ def health_check(db: Session = Depends(get_db)) -> HealthResponse:
 def list_samples(
     db:       Session = Depends(get_db),
     page:     int     = Query(1,    ge=1,  description="Page number (1-based)"),
-    limit:    int     = Query(50,   ge=1,  le=500, description="Items per page"),
+    limit:    int     = Query(50,   ge=1,  le=3000,description="Items per page"),
     disease:  str | None = Query(None, description="Filter by disease label"),
     country:  str | None = Query(None, description="Filter by country"),
     gender:   str | None = Query(None, description="Filter by gender"),

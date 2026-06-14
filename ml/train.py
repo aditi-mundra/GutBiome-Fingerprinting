@@ -121,12 +121,18 @@ def run_pipeline() -> None:
     # repeat I/O inside train.py.
     with _step("2 / 10  Exploratory Data Analysis"):
         raw_df = load_raw_data()
+        logger.info("DEBUG TRAIN")
+        logger.info("raw_df rows after load_raw_data = %d", len(raw_df))
         _, meta_cols = identify_columns(raw_df)
         run_eda(raw_df, feature_cols, meta_cols)
 
     # ── 3. Dimensionality reduction ─────────────────────────────────────────
     with _step("3 / 10  Dimensionality Reduction  (PCA → UMAP)"):
         X_pca, X_umap, _pca_model, _umap_model = run_dimensionality_reduction(X_norm)
+        logger.info("DEBUG DIM RED")
+        logger.info("X_norm rows = %d", X_norm.shape[0])
+        logger.info("X_pca rows  = %d", X_pca.shape[0])
+        logger.info("X_umap rows = %d", X_umap.shape[0])
 
     # ── 4. Clustering ───────────────────────────────────────────────────────
     with _step("4 / 10  Clustering  (KMeans | GMM | HDBSCAN)"):
@@ -139,6 +145,8 @@ def run_pipeline() -> None:
 
     # Resolve the winning label array and its embedding space
     best_labels  = labels_dict[best_pipeline]
+    logger.info("DEBUG CLUSTERING")
+    logger.info("best_labels length = %d", len(best_labels))
     best_X_embed = X_pca if best_pipeline in ("pca_kmeans", "pca_gmm") else X_umap
 
     # ── 6. Fingerprinting ───────────────────────────────────────────────────

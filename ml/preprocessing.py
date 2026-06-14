@@ -75,6 +75,81 @@ def load_raw_data(path: Path = ABUNDANCE_CSV) -> pd.DataFrame:
 
     return df
 
+def sanitize_sample_ids(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Clean and validate sampleID column.
+    """
+
+    logger.info("Sanitizing sampleID values ...")
+
+    df["sampleID"] = df["sampleID"].astype(str).str.strip()
+
+    # remove fake null strings
+    df["sampleID"] = df["sampleID"].replace(
+        ["", "nan", "None", "NULL", "null"],
+        np.nan
+    )
+
+    null_count = df["sampleID"].isna().sum()
+
+    if null_count > 0:
+        logger.warning(
+            "Dropping %d rows with invalid sampleID",
+            null_count
+        )
+
+        df = df[df["sampleID"].notna()].copy()
+
+    return df.reset_index(drop=True)
+
+def handle_duplicate_samples(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Remove duplicate sampleIDs safely.
+    """
+
+    n_duplicates = df["sampleID"].duplicated().sum()
+
+    if n_duplicates == 0:
+        logger.info("No duplicate sampleIDs found.")
+        return df
+
+    logger.warning("Found %d duplicate sampleIDs", n_duplicates)
+
+    # exact duplicate rows
+    before = len(df)
+
+    df = df.drop_duplicates()
+
+    exact_removed = before - len(df)
+
+    if exact_removed:
+        logger.info("Removed %d exact duplicate rows", exact_removed)
+
+    # conflicting duplicates
+    remaining = df[df["sampleID"].duplicated(keep=False)]
+
+    if not remaining.empty:
+        conflicting = remaining["sampleID"].nunique()
+
+        logger.warning(
+            "Found %d conflicting duplicate sampleIDs. Keeping first occurrence.",
+            conflicting
+        )
+
+        logger.warning(
+            "Example duplicate IDs: %s",
+            list(remaining["sampleID"].unique()[:10])
+        )
+
+        df = df.drop_duplicates(
+            subset=["sampleID"],
+            keep="first"
+        )
+
+    logger.info("Final sample count after deduplication: %d", len(df))
+
+    return df.reset_index(drop=True)
+
 
 def identify_columns(df: pd.DataFrame) -> Tuple[list[str], list[str]]:
     """
@@ -99,6 +174,49 @@ def identify_columns(df: pd.DataFrame) -> Tuple[list[str], list[str]]:
                 len(feature_cols), len(meta_cols))
     return feature_cols, meta_cols
 
+def validate_feature_matrix(
+    df: pd.DataFrame,
+    feature_cols: list[str]
+) -> pd.DataFrame:
+    """
+    Validate microbial abundance features.
+    """
+
+    logger.info("Validating microbial feature matrix ...")
+
+    X = df[feature_cols].apply(
+        pd.to_numeric,
+        errors="coerce"
+    )
+
+    nan_count = X.isna().sum().sum()
+
+    if nan_count > 0:
+        logger.warning(
+            "Found %d invalid feature values. Filling with 0.",
+            nan_count
+        )
+
+        X = X.fillna(0)
+
+    negative_count = (X < 0).sum().sum()
+
+    if negative_count > 0:
+        raise ValueError(
+            f"Found {negative_count} negative abundance values."
+        )
+
+    zero_columns = (X.sum(axis=0) == 0).sum()
+
+    if zero_columns > 0:
+        logger.warning(
+            "%d microbial columns contain only zeros",
+            zero_columns
+        )
+
+    df[feature_cols] = X
+
+    return df
 
 def clean_metadata(df: pd.DataFrame) -> pd.DataFrame:
     """
@@ -204,7 +322,12 @@ def normalize_features(
     X_norm  : (n_samples, n_features) normalised matrix
     scaler  : fitted StandardScaler (saved to disk for inference)
     """
-    X_raw = df[feature_cols].fillna(0).values.astype(np.float64)
+    X_raw = (
+        df[feature_cols]
+        .apply(pd.to_numeric, errors="coerce")
+        .fillna(0)
+        .values
+        .astype(np.float64))
 
     if scaler_type == "clr":
         logger.info("Applying CLR transform …")
@@ -227,51 +350,50 @@ def normalize_features(
 # ──────────────────────────────────────────────────────────────────────────────
 
 def run_preprocessing() -> Tuple[np.ndarray, pd.DataFrame, list[str]]:
-    """
-    Full preprocessing pipeline:
-      1. Load raw CSV
-      2. Identify columns
-      3. Clean metadata
-      4. Filter low-prevalence features
-      5. Normalise features
-      6. Persist all artefacts
 
-    Returns
-    -------
-    X_norm       : (n_samples, n_features) normalised feature matrix
-    metadata     : cleaned metadata DataFrame (includes sampleID)
-    feature_cols : list of retained feature column names
-    """
     ensure_dirs()
 
     # 1. Load
     df = load_raw_data()
 
-    # 2. Split columns
+    # 2. Clean sample IDs
+    df = sanitize_sample_ids(df)
+
+    # 3. Remove duplicates
+    df = handle_duplicate_samples(df)
+    logger.info("After duplicate handling: %d rows", len(df))
+    
+    # 4. Identify columns
     feature_cols, meta_cols = identify_columns(df)
 
-    # 3. Clean metadata
+    # 5. Validate microbial features
+    df = validate_feature_matrix(df, feature_cols)
+
+    # 6. Clean metadata
     metadata = clean_metadata(df)
 
-    # Ensure sampleID is present and has no nulls (used as primary key)
-    if "sampleID" not in metadata.columns:
-        raise ValueError("'sampleID' column is required but not found in metadata.")
-    n_null_ids = metadata["sampleID"].isna().sum()
-    if n_null_ids > 0:
-        logger.warning("%d samples have null sampleID — dropping them.", n_null_ids)
-        valid_mask = metadata["sampleID"].notna()
-        metadata   = metadata[valid_mask].reset_index(drop=True)
-        df         = df[valid_mask].reset_index(drop=True)
-
-    # 4. Prevalence filter
+    # 7 Prevalence filter
     min_prev     = PREPROCESSING["min_prevalence"]
     feature_cols = filter_low_prevalence(df, feature_cols, min_prev)
 
-    # 5. Normalise
+    # 8. Normalise
     scaler_type  = PREPROCESSING["scaler"]
     X_norm, scaler = normalize_features(df, feature_cols, scaler_type)
 
-    # 6. Persist artefacts
+    # Safety checks
+    if len(metadata) != len(X_norm):
+        raise RuntimeError(
+            f"Row mismatch: metadata={len(metadata)} X={len(X_norm)}"
+        )
+
+    if not metadata["sampleID"].is_unique:
+        raise RuntimeError(
+            "sampleID still contains duplicates after preprocessing"
+        )
+
+    logger.info("Integrity checks passed.")
+
+    # 9. Persist artefacts
     logger.info("Persisting preprocessed artefacts …")
 
     np.save(FEATURES_NORMALIZED_NPY, X_norm)
@@ -288,6 +410,12 @@ def run_preprocessing() -> Tuple[np.ndarray, pd.DataFrame, list[str]]:
 
     logger.info("Preprocessing complete. Features: %d, Samples: %d",
                 X_norm.shape[1], X_norm.shape[0])
+                
+    logger.info("DEBUG PREPROCESSING")
+    logger.info("Rows in df           = %d", len(df))
+    logger.info("Rows in metadata     = %d", len(metadata))
+    logger.info("Rows in X_norm       = %d", X_norm.shape[0])
+    logger.info("Features retained    = %d", len(feature_cols))
 
     return X_norm, metadata, feature_cols
 

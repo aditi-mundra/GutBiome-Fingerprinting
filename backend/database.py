@@ -14,6 +14,7 @@ Provides:
 from __future__ import annotations
 
 import logging
+import os
 from collections.abc import Generator
 
 from sqlalchemy import create_engine, text
@@ -23,13 +24,32 @@ from backend.config import settings
 
 logger = logging.getLogger(__name__)
 
+# ── ABSOLUTE DATABASE PATH RESOLUTION ─────────────────────────────────────────
+
+db_url = settings.DATABASE_URL
+
+# Force absolute path resolution to the project root workspace directory
+if db_url.startswith("sqlite:///"):
+    db_filename = db_url.split(":///")[-1].lstrip("./")
+    
+    # Locate where database.py sits (inside backend/)
+    CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+    # Go up one level to the main project root folder
+    ROOT_DIR = os.path.dirname(CURRENT_DIR)
+    # Target the single valid database file
+    DB_PATH = os.path.join(ROOT_DIR, db_filename)
+    
+    db_url = f"sqlite:///{DB_PATH}"
+    logger.info("🔗 SQLite path forced strictly to root: %s", DB_PATH)
+else:
+    logger.info("🔗 Connecting via configured database URL strategy.")
+
 # ── Engine ────────────────────────────────────────────────────────────────────
 
-# SQLite needs connect_args={"check_same_thread": False} to run inside FastAPI safely.
 engine = create_engine(
-    settings.DATABASE_URL,
-    connect_args={"check_same_thread": False},
-    echo=settings.DEBUG,    # log all SQL when DEBUG=true
+    db_url,
+    connect_args={"check_same_thread": False} if db_url.startswith("sqlite://") else {},
+    echo=settings.DEBUG,
 )
 
 # ── Session factory ───────────────────────────────────────────────────────────
@@ -38,7 +58,7 @@ SessionLocal = sessionmaker(
     bind=engine,
     autocommit=False,
     autoflush=False,
-    expire_on_commit=False,  # keep ORM objects usable after commit without re-querying
+    expire_on_commit=False,
 )
 
 # ── Declarative base ──────────────────────────────────────────────────────────
@@ -51,17 +71,6 @@ class Base(DeclarativeBase):
 # ── FastAPI dependency ────────────────────────────────────────────────────────
 
 def get_db() -> Generator[Session, None, None]:
-    """
-    Yield a database session for the duration of a single HTTP request.
-
-    Usage in a route:
-        @router.get("/items")
-        def read_items(db: Session = Depends(get_db)):
-            ...
-
-    The session is always closed in the finally block regardless of
-    whether the request raised an exception.
-    """
     db = SessionLocal()
     try:
         yield db
@@ -75,14 +84,7 @@ def get_db() -> Generator[Session, None, None]:
 # ── Table creation ────────────────────────────────────────────────────────────
 
 def create_tables() -> None:
-    """
-    Create all tables defined in the ORM models if they do not already exist.
-
-    This is idempotent — safe to call on every startup.
-    Import models here (not at module level) to avoid circular imports;
-    the import side-effect registers the models with Base.metadata.
-    """
-    import backend.models  # no
+    import backend.models  # type: ignore
     try:
         Base.metadata.create_all(bind=engine, checkfirst=True)
         logger.info("Database tables verified / created successfully.")
@@ -92,10 +94,6 @@ def create_tables() -> None:
 
 
 def check_connection() -> bool:
-    """
-    Return True if the database is reachable, False otherwise.
-    Used for the /health endpoint.
-    """
     try:
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
