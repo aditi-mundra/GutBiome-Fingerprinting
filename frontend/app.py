@@ -200,19 +200,48 @@ def build_umap_figure(df: pd.DataFrame, color_by: str, pred_point: dict | None =
     )
     return fig
 
-def dist_donut(counts: dict, title: str) -> go.Figure:
-    if not counts: return go.Figure()
-    labels, values = zip(*sorted(counts.items(), key=lambda x: -x[1]))
-    fig = go.Figure(go.Pie(
-        labels=labels, values=values, hole=0.6,
-        textinfo="percent", textfont=dict(size=10, color="#ffffff"),
-        marker=dict(colors=PALETTE, line=dict(color=C_SURFACE, width=2)),
-    ))
+def dist_donut(df_counts, title_prefix=""):
+    """
+    Generates a high-fidelity glassmorphic donut chart for categorical metadata splits.
+    """
+    labels = list(df_counts.keys())
+    values = list(df_counts.values())
+
+    fig = go.Figure(
+        data=[
+            go.Pie(
+                labels=labels,
+                values=values,
+                hole=0.45,
+                marker=dict(colors=PALETTE),
+                textinfo="percent+label",
+                textfont=dict(color=C_TEXT, size=11),
+                hoverinfo="label+value+percent",
+            )
+        ]
+    )
+
     fig.update_layout(
+        title=dict(
+            text=f"<b>{title_prefix} Distribution</b>",
+            font=dict(color=C_TEXT, size=14),
+            x=0.0,
+            y=0.95,
+        ),
+        margin=dict(t=50, b=10, l=10, r=10),
         showlegend=True,
-        legend=dict(font=dict(size=10, color=C_TEXT), bgcolor="transparent", orientation="h", y=-0.1),
-        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        margin=dict(l=5, r=5, t=10, b=5), height=220,
+        legend=dict(
+            bgcolor="rgba(0,0,0,0)",  # Perfect transparent background
+            font=dict(color=C_TEXT, size=11),
+            orientation="v",
+            yanchor="middle",
+            y=0.5,
+            xanchor="left",
+            x=1.02,
+        ),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        height=260,
     )
     return fig
 
@@ -375,7 +404,7 @@ with tab_cohort:
         )
     else:
         # User selection setup
-        cluster_options = sorted(list(cluster_map.keys()), key=lambda x: int(x) if x.isdigit() else x)
+        cluster_options = sorted(list(cluster_map.keys()), key=lambda x: (0, int(x)) if str(x).lstrip('-').isdigit() else (1, str(x)))
         selected_cluster = st.selectbox("Select Target Biome Group Cluster For Fine-Grain Analysis:", options=cluster_options, index=0)
         
         # Scoping safely bounded within the resolution logic
