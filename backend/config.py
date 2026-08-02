@@ -25,7 +25,13 @@ class Settings(BaseSettings):
     DEBUG: bool = True
 
     # ── CORS ──────────────────────────────────────────────────
-    CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000"
+    #CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000"
+    # Example default in backend/config.py or .env:
+    CORS_ORIGINS = [
+        "http://localhost:8501",
+        "http://127.0.0.1:8501",
+        "https://*.streamlit.app",  # Streamlit Community Cloud
+    ]
 
     # ── ML artifact directories (relative to project root) ───
     MODELS_DIR: str = "models"
