@@ -8,7 +8,9 @@ scikit-learn
 hdbscan
 umap-learn
 networkx
+matplotlib
+seaborn
+plotly
 sqlalchemy
 pydantic
 pydantic-settings
-plotly
