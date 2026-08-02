@@ -12,3 +12,6 @@ models/*.joblib
 
 # Ignore generated analysis figures 
 docs/figures/
+
+# Keep raw data tracked for cloud builds
+!data/raw/abundance_stoolsubset.csv
