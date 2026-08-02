@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     # ── CORS ──────────────────────────────────────────────────
     #CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000"
     # Example default in backend/config.py or .env:
-    CORS_ORIGINS = [
+    CORS_ORIGINS: list[str] = [
         "http://localhost:8501",
         "http://127.0.0.1:8501",
         "https://*.streamlit.app",  # Streamlit Community Cloud
