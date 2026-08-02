@@ -8,10 +8,12 @@ never reads os.environ directly.
 
 from __future__ import annotations
 
+import json
 from functools import lru_cache
 from pathlib import Path
-from typing import List
+from typing import List, Union
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -25,9 +27,8 @@ class Settings(BaseSettings):
     DEBUG: bool = True
 
     # ── CORS ──────────────────────────────────────────────────
-    #CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000"
-    # Example default in backend/config.py or .env:
-    CORS_ORIGINS: list[str] = [
+    # Accepts either a native Python list or an env-var string (JSON/Comma-delimited)
+    CORS_ORIGINS: Union[List[str], str] = [
         "http://localhost:8501",
         "http://127.0.0.1:8501",
         "https://*.streamlit.app",  # Streamlit Community Cloud
@@ -41,12 +42,38 @@ class Settings(BaseSettings):
     # Use modern Pydantic v2 settings configuration
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
+    # ── Validators ────────────────────────────────────────────
+
+    @field_validator("CORS_ORIGINS", mode="before")
+    @classmethod
+    def parse_cors_origins(cls, v: Union[List[str], str]) -> List[str]:
+        """
+        Flexibly parse CORS_ORIGINS from env vars.
+        Handles JSON arrays (e.g. '["http://a", "http://b"]') or
+        comma-separated strings (e.g. 'http://a,http://b') cleanly.
+        """
+        if isinstance(v, str):
+            v_stripped = v.strip()
+            if v_stripped.startswith("[") and v_stripped.endswith("]"):
+                try:
+                    parsed = json.loads(v_stripped)
+                    if isinstance(parsed, list):
+                        return [str(item).strip() for item in parsed if str(item).strip()]
+                except json.JSONDecodeError:
+                    pass
+            return [o.strip() for o in v_stripped.split(",") if o.strip()]
+        if isinstance(v, list):
+            return [str(o).strip() for o in v if str(o).strip()]
+        return v
+
     # ── Derived properties ────────────────────────────────────
 
     @property
     def cors_origins_list(self) -> List[str]:
-        """Parse the comma-separated CORS_ORIGINS string into a list."""
-        return [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]
+        """Safe accessor returning parsed CORS origins as a list."""
+        if isinstance(self.CORS_ORIGINS, list):
+            return self.CORS_ORIGINS
+        return self.parse_cors_origins(self.CORS_ORIGINS)
 
     @property
     def project_root(self) -> Path:
