@@ -5,13 +5,15 @@ frontend/app.py
 
 import json
 import requests
+import os
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
 # ─────────────────────────── CONFIG ────────────────────────────────────────
-API_BASE = "http://127.0.0.1:8000"
+# Uses environment variable on cloud, defaults to localhost for local dev
+API_BASE = os.getenv("API_BASE_URL", "http://127.0.0.1:8000")
 
 # Deep Sea Scientific Palette
 C_BG         = "#0a0f1d"
@@ -165,45 +167,7 @@ def fetch_clusters() -> list:
     except Exception:
         return []
 
-def build_umap_figure(df: pd.DataFrame, color_by: str, pred_point: dict | None = None) -> go.Figure:
-    if df.empty or "umap_x" not in df.columns or "umap_y" not in df.columns:
-        return go.Figure()
-
-    df["_color_str"] = df[color_by].astype(str) if color_by in df.columns else df.iloc[:, 0].astype(str)
-
-    fig = px.scatter(
-        df, x="umap_x", y="umap_y", color="_color_str",
-        color_discrete_sequence=PALETTE,
-        hover_data={"sample_id": True, "disease": True, "country": True, "age": True, "umap_x": False, "umap_y": False, "_color_str": False},
-        labels={"_color_str": color_by.replace("_", " ").title()},
-        template="plotly_dark",
-    )
-    fig.update_traces(marker=dict(size=5.5, opacity=0.75, line=dict(width=0)))
-
-    if pred_point and pred_point.get("umap_x") is not None and pred_point.get("umap_y") is not None:
-        fig.add_trace(go.Scatter(
-            x=[pred_point["umap_x"]], y=[pred_point["umap_y"]],
-            mode="markers",
-            marker=dict(symbol="star", size=20, color=C_CORAL, line=dict(color="#ffffff", width=1.5)),
-            name="⭐ Target Profile",
-            hovertemplate="<b>Analyzed Sample Location</b><br>UMAP: (%{x:.3f}, %{y:.3f})<extra></extra>",
-        ))
-
-    fig.update_layout(
-        margin=dict(l=0, r=0, t=10, b=0),
-        legend=dict(bgcolor="rgba(10,15,29,0.6)", bordercolor=C_BORDER, borderwidth=1, font=dict(size=11, color=C_TEXT)),
-        plot_bgcolor="rgba(0,0,0,0)",
-        paper_bgcolor="rgba(0,0,0,0)",
-        xaxis=dict(title="Dimension 1", gridcolor=C_GRID, zeroline=False, showticklabels=False),
-        yaxis=dict(title="Dimension 2", gridcolor=C_GRID, zeroline=False, showticklabels=False),
-        height=540,
-    )
-    return fig
-
 def dist_donut(df_counts, title_prefix=""):
-    """
-    Generates a high-fidelity glassmorphic donut chart for categorical metadata splits.
-    """
     labels = list(df_counts.keys())
     values = list(df_counts.values())
 
@@ -347,52 +311,12 @@ for c in clusters_raw:
     if cid is not None:
         cluster_map[str(cid)] = c
 
-tab_atlas, tab_cohort = st.tabs(["🗺️ Interactive Map Atlas", "👥 Structural Cohort Insights"])
+#tab_atlas, tab_cohort = st.tabs(["🗺️ Interactive Map Atlas", "👥 Structural Cohort Insights"])
+tab_cohort, = st.tabs(["👥 Structural Cohort Insights"])
+
 
 # ═══════════════════════════════════════════════════════════════════════════
-# TAB 1 — INTERACTIVE ATLAS MAP
-# ═══════════════════════════════════════════════════════════════════════════
-
-with tab_atlas:
-    if df_samples.empty:
-        st.markdown(
-            f'<div class="glass-card" style="text-align:center; padding: 60px 20px; color:{C_MUTED};">'
-            f'<div style="font-size:40px; margin-bottom:12px;">🌐</div>Atlas data will appear here once the backend is running.<br>'
-            f'<span style="font-size:12px; color:{C_CORAL}">No samples returned from /api/v1/samples.</span></div>',
-            unsafe_allow_html=True
-        )
-    else:
-        col_ctrl, col_rf = st.columns([3, 1])
-        with col_ctrl:
-            color_options = ["cluster_id", "disease", "country", "sex"]
-            available_colors = [c for c in color_options if c in df_samples.columns] or df_samples.columns.tolist()
-            color_by = st.selectbox("Color mapping vector attribute:", options=available_colors, index=0)
-        with col_rf:
-            st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
-            if st.button("🗘 Refresh Map Data", use_container_width=True):
-                st.cache_data.clear()
-                st.rerun()
-
-        pred_point = st.session_state.get("pred_result") or None
-        fig_umap = build_umap_figure(df_samples, color_by, pred_point=pred_point)
-        st.plotly_chart(fig_umap, use_container_width=True, config={"displayModeBar": False})
-
-        st.markdown("<div class='section-label'>Global Repository Statistics</div>", unsafe_allow_html=True)
-        
-        n_clusters = df_samples["cluster_id"].nunique() if "cluster_id" in df_samples.columns else "—"
-        n_samples  = len(df_samples)
-        diseases   = df_samples["disease"].nunique() if "disease" in df_samples.columns else "—"
-        countries  = df_samples["country"].nunique() if "country" in df_samples.columns else "—"
-
-        m1, m2, m3, m4 = st.columns(4)
-        for col, title, value in zip([m1, m2, m3, m4], 
-                                     ["Total Processed Profiles", "Identified Clusters", "Phenotype Targets", "Source Countries"],
-                                     [f"{n_samples:,}", str(n_clusters), str(diseases), str(countries)]):
-            with col:
-                st.markdown(f'<div class="glass-card"><div class="metric-title">{title}</div><div class="metric-value">{value}</div></div>', unsafe_allow_html=True)
-
-# ═══════════════════════════════════════════════════════════════════════════
-# TAB 2 — COHORT INSIGHTS
+# TAB — COHORT INSIGHTS
 # ═══════════════════════════════════════════════════════════════════════════
 
 with tab_cohort:
