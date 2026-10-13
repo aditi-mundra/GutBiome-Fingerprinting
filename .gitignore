@@ -4,14 +4,19 @@ venv/
 __pycache__/
 *.pyc
 
-# Ignore ALL contents inside the data folder 
-data/
-
 # Ignore all trained model files
 models/*.joblib
 
 # Ignore generated analysis figures 
 docs/figures/
 
-# Keep raw data tracked for cloud builds
+# Ignore generated data, but keep the raw dataset
+data/*
+!data/raw/
+data/raw/*
 !data/raw/abundance_stoolsubset.csv
+
+# Secrets
+.env
+.env.*
+!.env.example
