@@ -23,7 +23,8 @@ class Settings(BaseSettings):
 
     # ── FastAPI server ────────────────────────────────────────
     API_HOST: str = "0.0.0.0"
-    API_PORT: int = 8000
+    API_PORT: int | None = 8000
+    PORT: int | None = None
     DEBUG: bool = True
 
     # ── CORS ──────────────────────────────────────────────────
@@ -41,6 +42,18 @@ class Settings(BaseSettings):
 
     # Use modern Pydantic v2 settings configuration
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    @property
+    def api_port(self) -> int:
+        return int(self.PORT or self.API_PORT or 8000)
+
+    @property
+    def api_host(self) -> str:
+        return self.API_HOST or "0.0.0.0"
+
+    @property
+    def debug(self) -> bool:
+        return str(self.DEBUG).lower() not in {"0", "false", "no"}
 
     # ── Validators ────────────────────────────────────────────
 

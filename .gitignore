@@ -1,6 +1,10 @@
 # Environments and caches
 venv/
 .venv/
+/Lib/
+/Scripts/
+/share/
+/etc/
 __pycache__/
 *.pyc
 

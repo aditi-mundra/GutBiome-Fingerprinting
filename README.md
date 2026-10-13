@@ -167,11 +167,40 @@ python -m backend.seed
 Fire up the local backend API web microservice instance via Uvicorn:
 
 ```bash
-uvicorn backend.main:app --reload
-
+uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 Once initialized, the interactive Swagger documentation interface can be accessed directly at **`http://127.0.0.1:8000/docs`**.
+
+### 5. Railway deployment configuration
+
+This project is designed to run as two separate Railway services:
+
+- Backend service: starts with `uvicorn backend.main:app --host 0.0.0.0 --port $PORT`
+- Frontend service: starts with `streamlit run frontend/app.py --server.address=0.0.0.0 --server.port=$PORT`
+
+Set these environment variables in Railway for the backend service:
+
+```env
+DATABASE_URL=sqlite:///./gutbiome.db
+API_HOST=0.0.0.0
+PORT=8000
+DEBUG=false
+CORS_ORIGINS=["https://your-frontend-domain.up.railway.app"]
+```
+
+Set these environment variables in Railway for the frontend service:
+
+```env
+API_BASE_URL=https://your-backend-domain.up.railway.app
+PORT=8501
+```
+
+Important notes:
+
+- The repo keeps `.env` out of Git; use Railway service variables instead of a committed `.env` file.
+- The backend expects ML artifacts to exist under `models/`, `data/processed/`, and `data/results/`; generate them locally once with `python -m ml.train` before deployment.
+- SQLite is acceptable for a short demo, but it is not durable across Railway restarts unless you attach a persistent volume or migrate to Postgres.
 
 ---
 

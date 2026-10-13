@@ -12,8 +12,9 @@ import plotly.graph_objects as go
 import streamlit as st
 
 # ─────────────────────────── CONFIG ────────────────────────────────────────
-# Uses environment variable on cloud, defaults to localhost for local dev
-API_BASE = os.getenv("API_BASE_URL", "http://127.0.0.1:8000")
+# Uses environment variable on cloud, defaults to localhost for local dev.
+# Railway sets the backend service's public URL in API_BASE_URL automatically.
+API_BASE = os.getenv("API_BASE_URL", "http://127.0.0.1:8000").rstrip("/")
 
 # Deep Sea Scientific Palette
 C_BG         = "#0a0f1d"
