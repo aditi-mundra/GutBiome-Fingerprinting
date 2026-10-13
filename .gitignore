@@ -9,7 +9,7 @@ __pycache__/
 *.pyc
 
 # Ignore all trained model files
-models/*.joblib
+# models/*.joblib
 
 # Ignore generated analysis figures 
 docs/figures/
